@@ -16,7 +16,7 @@ import aioredis
 load_dotenv()
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL")
-RABBITMQ_API = os.getenv("RABBITMQ_API_URL")
+# RABBITMQ_API = os.getenv("RABBITMQ_API_URL")
 
 MAX_ITEMS_PER_DEVICE = 5
 REDIS_URL = os.getenv("REDIS_URL")
@@ -33,7 +33,8 @@ QUEUE_REGEX = re.compile(
     r"(?P<device>inverter|meter|battery|controller)_status_queue_(?P<timestamp>\d+)"
 )
 
-message_queue = asyncio.Queue()
+csv_queue = asyncio.Queue()
+redis_queue = asyncio.Queue()
 active_consumers = {}
 
 
@@ -57,14 +58,14 @@ async def save_to_redis(deviceId, data):
     await redis_client.rpush(key, json.dumps(data))
     await redis_client.ltrim(key, -MAX_ITEMS_PER_DEVICE, -1)
 
-    print(f"Saved {device_type} to Redis")
+    # print(f"Saved {device_type} to Redis")
 
 
 async def declare_and_bind_redis(channel: aio_pika.channel):
     queue_name = "command_logging"
     queue = await channel.declare_queue(queue_name, durable=True)
     await queue.bind(EXCHANGE_NAME, routing_key=REDIS_ROUTING_KEYS)
-    print("Bound to command queue thing")
+    print(f"Command Logging Queue bound to exchange {EXCHANGE_NAME} with routing key {REDIS_ROUTING_KEYS}")
     return queue
 
 
@@ -77,9 +78,9 @@ async def consume_and_store_redis(channel: aio_pika.channel):
                 try:
                     body = message.body.decode()
                     data = dict(json.loads(body))
-                    print(data)
+                    # print(data)
 
-                    device_id = None
+                    device_id = None['logged_action']
 
                     if data["deviceId"] is not None:
                         device_id = data["deviceId"]
@@ -89,7 +90,8 @@ async def consume_and_store_redis(channel: aio_pika.channel):
                     if device_id is not None:
                         await save_to_redis(device_id, data)
                 except Exception as e:
-                    print(e)
+                    # print(e)
+                    pass
 
 
 async def declare_and_bind(channel: aio_pika.channel):
@@ -111,11 +113,13 @@ async def consume_logging(channel: aio_pika.channel):
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
             headers = dict(message.headers)
+            print(headers)
+
             body = message.body.decode()
 
             data = dict(json.loads(body))
 
-            await message_queue.put(data)
+            await csv_queue.put(data)
 
             await message.ack()
 
@@ -126,7 +130,7 @@ async def save_csv_file(keys, data, device_id):
     now = datetime.now()
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
-    documents_path = Path.home() / "Documents" / "Logs"
+    documents_path = Path.home() / "Documents" / "Logs" / f"{device_id}"
 
     documents_path.mkdir(parents=True, exist_ok=True)
 
@@ -146,31 +150,85 @@ async def save_messages():
     while True:
         messages = []
 
-        while not message_queue.empty():
-            messages.append(await message_queue.get())
+        while not csv_queue.empty():
+            messages.append(await csv_queue.get())
 
         if messages:
             for message in messages:
-                print("\n")
-                # print(message)
-
+                # check for valid message format
                 if type(message) is dict:
                     data = message["message"]
 
-                    if "standard" in data:
-                        print("this is a battery, continue: ")
-
+                    if "standard" or "data" in data:
                         standard_data = dict(data["standard"])
                         extended_data = dict(data["data"])
 
                         standard_keys = list(standard_data.keys())
                         extended_keys = list(extended_data.keys())
 
-                        await save_csv_file(standard_keys, standard_data, "battery")
+                        await save_csv_file(standard_keys, standard_data, "battery_standard")
+                        await save_csv_file(extended_keys, extended_data, "battery_extended")
 
+                    
+                    if "logged_action" in data:
+                        logged_action = data['logged_action']
+
+                        if "Battery" in logged_action:
+                            if "standard" or "data" in data:
+                                standard_data = dict(data["standard"])
+                                extended_data = dict(data["data"])
+
+                                standard_keys = list(standard_data.keys())
+                                extended_keys = list(extended_data.keys())
+
+                                await save_csv_file(standard_keys, standard_data, "battery_standard")
+                                await save_csv_file(extended_keys, extended_data, "battery_extended")
+
+                        elif "Controller" in logged_action:
+                            keys = list(data.keys())
+
+                            # print('timestamp' in keys)
+                            
+                            for key in keys:
+                                if key == 'global_state':
+                                    keys.remove('global_state')
+
+                                    for i in data['global_state']:
+                                        keys.append(i)
+                            
+                            data_dict = dict()
+
+                            for key in keys:
+                                if key in data:
+                                    data_dict[key] = data[key]
+                                elif key not in data:
+                                    data_dict[key] = data['global_state'][key]
+
+                            data_dict_keys = list(data_dict.keys())
+
+                            await save_csv_file(data_dict_keys, data_dict, "controller")
+
+                            
                     else:
-                        print("this is not a battery:")
-                        # print(list(data.keys()))
+                        pass
+
+                    # if "standard" in data:
+                    #     # print("this is a battery, continue: ")
+
+                    #     standard_data = dict(data["standard"])
+                    #     extended_data = dict(data["data"])
+
+                    #     standard_keys = list(standard_data.keys())
+                    #     extended_keys = list(extended_data.keys())
+
+                    #     await save_csv_file(standard_keys, standard_data, "battery")
+
+                    # else:
+                    #     print(data.get('logged_action'))
+
+                    #     exit()
+
+                        # print(list(data.keys()))  
                     # print("message type is dictionary")
 
         # now = datetime.now()
