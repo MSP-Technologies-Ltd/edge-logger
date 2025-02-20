@@ -1,0 +1,7 @@
+services:
+  logger:
+    image: edge_logger
+    environment:
+      - HOST_HOME=${HOME}
+    volumes:
+      - ${HOME}/Documents/Logs:/app/logs

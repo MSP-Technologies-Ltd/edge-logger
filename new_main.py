@@ -25,6 +25,8 @@ csv_queue = asyncio.Queue()
 redis_queue = asyncio.Queue()
 latest_messages = {}
 
+USER_HOME = Path(os.getenv("HOST_HOME", "/apps/logs"))
+
 
 async def init_redis():
     global redis_client
@@ -155,7 +157,7 @@ async def save_csv_file(keys, data, device_id):
     now = datetime.now()
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
-    documents_path = Path.home() / "Documents" / "Logs" / device_id
+    documents_path = USER_HOME / "Documents" / "Logs" / f"{device_id}"
     documents_path.mkdir(parents=True, exist_ok=True)
 
     target_file = (
