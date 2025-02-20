@@ -191,7 +191,7 @@ async def save_messages():
                 keys = list(data.keys())
 
                 await save_csv_file(keys, data, device_id)
-                print(f"Saving log for {device_id}")
+                # print(f"Saving log for {device_id}")
 
         await asyncio.sleep(2)
 
