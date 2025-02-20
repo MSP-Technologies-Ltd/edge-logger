@@ -4,4 +4,4 @@ services:
     environment:
       - HOST_HOME=${HOME}
     volumes:
-      - ${HOME}/Documents/Logs:/app/logs
+      - ${HOME}/Documents/Logs:/app/Logs
