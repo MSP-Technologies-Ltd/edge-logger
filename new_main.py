@@ -25,8 +25,6 @@ csv_queue = asyncio.Queue()
 redis_queue = asyncio.Queue()
 latest_messages = {}
 
-USER_HOME = Path(os.getenv("HOST_HOME", "/apps/logs"))
-
 
 async def init_redis():
     global redis_client
@@ -48,12 +46,55 @@ async def save_to_redis(deviceId, data):
 
 async def declare_and_bind_redis(channel: aio_pika.Channel):
     queue_name = "command_logging"
-    queue = await channel.declare_queue(queue_name, durable=True)
+    queue = await channel.declare_queue(
+        queue_name,
+        durable=True,
+        arguments={
+            "x-max-length": 30,
+            "x-message-ttl": 5000,
+            "x-consumer-timeout-action": "ack",
+            "x-overflow": "drop-head",
+        },
+    )
     await queue.bind(EXCHANGE_NAME, routing_key=REDIS_ROUTING_KEYS)
     print(
         f"Command Logging Queue bound to exchange {EXCHANGE_NAME} with routing key {REDIS_ROUTING_KEYS}"
     )
     return queue
+
+
+def match_command_structure(obj):
+    if isinstance(obj, dict):
+        expected_keys = {
+            "deviceId": str,
+            "from": str,
+            "to": str,
+            "commandSeq": str,
+            "commandHint": str,
+            "action": dict,
+            "timestamp": str,
+        }
+        for key, expected_type in expected_keys.items():
+            if key not in obj or not isinstance(obj[key], expected_type):
+                return False
+            return True
+        return False
+
+
+def match_status_structure(obj):
+    if isinstance(obj, dict):
+        expected_keys = {
+            "deviceId": str,
+            "commandSeq": str,
+            "status": dict,
+            "timestamp": str,
+        }
+
+    for key, expected_type in expected_keys.items():
+        if key not in obj or not isinstance(obj[key], expected_type):
+            return False
+        return True
+    return False
 
 
 async def consume_and_store_redis(channel: aio_pika.Channel):
@@ -63,13 +104,13 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
         async for message in queue_iter:
             async with message.process():
                 try:
-                    pass
-                    # body = message.body.decode()
-                    # data = json.loads(body)
+                    body = message.body.decode()
+                    data = json.loads(body)
 
-                    # device_id = data.get("deviceId") or data.get("client_id")
-                    # if device_id:
-                    #     await save_to_redis(device_id, data)
+                    if match_command_structure(data) is True:
+                        device_id = data.get("deviceId")
+                        await save_to_redis(device_id, data)
+
                 except Exception as e:
                     print(f"Error processing Redis message: {e}")
 
@@ -100,54 +141,22 @@ async def consume_logging(channel: aio_pika.Channel):
         async for message in queue_iter:
             async with message.process():
                 try:
-                    headers = dict(message.headers)
-
                     body = message.body.decode()
-                    data = dict(json.loads(body))
 
-                    timestamp = None
-                    device_id = None
+                    data = json.loads(body)
 
-                    if headers:
-                        # print(headers)
+                    if match_status_structure(data):
+                        device_id = data.get("deviceId")
+                        timestamp = data.get("timestamp")
 
-                        if "timestamp" or "Timestamp" in headers:
-                            timestamp = headers.get("timestamp") or headers.get(
-                                "timestamp"
-                            )
+                        device_info = {"deviceId": device_id, "timestamp": timestamp}
 
-                        if "deviceId" in headers:
-                            device_id = headers.get("deviceId")
+                        status_data = data.get("status")
 
-                    if not headers:
-                        if "deviceId" or "clientId" in data:
-                            device_id = data.get("deviceId") or data.get("clientId")
-                    # device_id = data.get("deviceId") or data.get("clientId")
+                        if status_data is not None:
+                            all_data = {**device_info, **status_data}
 
-                    # message = data['message']
-                    if "message" in data:
-                        new_data = None
-                        message_data = data["message"]
-
-                        # deal with accuvim
-                        if "event" in data:
-                            new_data = data["body"]["message"]
-                            new_data.pop("rawValues", None)
-                            timestamp = data["body"]["timestamp"]
-                            device_id = data["headers"]["deviceId"]
-
-                        if timestamp is not None:
-                            timestamp_data = {"timestamp": timestamp}
-                            new_data = timestamp_data.update(message_data)
-
-                        else:
-                            new_data = message_data
-                        # new_data = data["message"]
-
-                        if device_id is not None:
-                            latest_messages[device_id] = (
-                                new_data  # Store only the latest message
-                            )
+                            latest_messages[device_id] = all_data
 
                 except Exception as e:
                     print(f"Error processing logging message: {e}")
@@ -157,7 +166,9 @@ async def save_csv_file(keys, data, device_id):
     now = datetime.now()
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
-    documents_path = USER_HOME / "Documents" / "Logs" / f"{device_id}"
+    log_dir = "/app/Logs"
+    # documents_path = Path.home() / "Documents" / "Logs" / f"{device_id}"
+    documents_path = Path(log_dir) / f"{device_id}"
     documents_path.mkdir(parents=True, exist_ok=True)
 
     target_file = (
@@ -174,42 +185,13 @@ async def save_csv_file(keys, data, device_id):
 
 async def save_messages():
     while True:
-        now = datetime.now()
-
         if latest_messages:
             for device_id, data in latest_messages.items():
-                # timestamp = data.get("timestamp")
 
                 keys = list(data.keys())
 
-                # print(device_id, keys)
-
-                if "event" in keys:
-                    pass
-                if "logged_action" not in keys:
-                    if "rawValues" in keys:
-                        raw_values = data["rawValues"]
-                        # print(raw_values)
-                        raw_keys = list(raw_values.keys())
-
-                        new_data = data.pop("rawValues", None)
-
-                        print(f"Saving log for {device_id}")
-                        await save_csv_file(keys, new_data, device_id)
-                        await save_csv_file(raw_keys, raw_values, "meterRawValues")
-                else:
-                    print(f"Saving log for {device_id}")
-                    await save_csv_file(keys, data, device_id)
-
-                # print(keys)
-                # keys.insert(0, "timestamp")
-
-                # for key in keys:
-                #     rel_data[key] = data[key]
-
-                # d = {'timestamp': timestamp, **rel_data}
-
-                # print(keys)
+                await save_csv_file(keys, data, device_id)
+                print(f"Saving log for {device_id}")
 
         await asyncio.sleep(2)
 
@@ -244,7 +226,6 @@ async def app():
             async with connection:
                 channel = await connection.channel()
 
-                # Start consumers
                 consumer_task = asyncio.create_task(consume_logging(channel))
                 writer_task = asyncio.create_task(save_messages())
                 redis_consumer_task = asyncio.create_task(
@@ -253,8 +234,8 @@ async def app():
 
                 await asyncio.gather(consumer_task, writer_task, redis_consumer_task)
         except Exception as e:
-            print(f"Error: {e}. Retrying in 5 seconds")
-            await asyncio.sleep(5)
+            print(f"Error: {e}. Retrying.")
+            await asyncio.sleep(1)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,3 @@
 #!/bin/sh
 
-docker run -d --name edge_logger \
-    -v /home/msp/Documents/Logs:/app/Logs \
-    edge-logger
+docker run -d -v ~/Documents/Logs:/app/Logs edge_logger
