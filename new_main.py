@@ -67,12 +67,13 @@ def match_command_structure(obj):
     if isinstance(obj, dict):
         expected_keys = {
             "deviceId": str,
+            "deviceType": str,
             "from": str,
             "to": str,
             "commandSeq": str,
             "commandHint": str,
             "action": dict,
-            "timestamp": str,
+            "timestamp": datetime,
         }
         for key, expected_type in expected_keys.items():
             if key not in obj or not isinstance(obj[key], expected_type):
@@ -84,10 +85,11 @@ def match_command_structure(obj):
 def match_status_structure(obj):
     if isinstance(obj, dict):
         expected_keys = {
+            "deviceType": str,
             "deviceId": str,
             "commandSeq": str,
             "status": dict,
-            "timestamp": str,
+            "timestamp": datetime,
         }
 
     for key, expected_type in expected_keys.items():
@@ -149,7 +151,10 @@ async def consume_logging(channel: aio_pika.Channel):
                         device_id = data.get("deviceId")
                         timestamp = data.get("timestamp")
 
-                        device_info = {"deviceId": device_id, "timestamp": timestamp}
+                        device_info = {
+                            "deviceId": device_id,
+                            "timestamp": str(timestamp),
+                        }
 
                         status_data = data.get("status")
 
