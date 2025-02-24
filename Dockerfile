@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . . 
 
-CMD ["python", "new_main.py"]
+CMD ["python", "logger.py"]
