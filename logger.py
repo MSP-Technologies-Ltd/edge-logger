@@ -112,6 +112,8 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     if match_command_structure(data) is True:
                         device_id = data.get("deviceId")
                         await save_to_redis(device_id, data)
+                    else:
+                        print("does not match expected message format")
 
                 except Exception as e:
                     print(f"Error processing Redis message: {e}")
@@ -140,7 +142,9 @@ async def consume_logging(channel: aio_pika.Channel):
     queue = await declare_and_bind_logging(channel)
 
     async with queue.iterator() as queue_iter:
+        print("async with queue iter in consume_logging")
         async for message in queue_iter:
+            print("async for message in queue iter")
             async with message.process():
                 try:
                     body = message.body.decode()
@@ -196,7 +200,7 @@ async def save_messages():
                 keys = list(data.keys())
 
                 await save_csv_file(keys, data, device_id)
-                # print(f"Saving log for {device_id}")
+                print(f"Saving log for {device_id}")
 
         await asyncio.sleep(2)
 
@@ -221,7 +225,6 @@ async def connect_with_retry(max_retries=5, base_delay=2):
 
 async def app():
     await init_redis()
-
     while True:
         try:
             connection = await connect_with_retry()
