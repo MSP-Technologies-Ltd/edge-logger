@@ -75,10 +75,14 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     data = json.loads(body)
 
                     device_id = data.get("deviceId")
+
+                    if device_id is None:
+                        device_id = data.get("client_id")
+
                     if device_id is not None:
                         await save_to_redis(device_id, data)
-                    else:
-                        print(data)
+                    # else:
+                    #     print(data)
 
                 except Exception as e:
                     print(
