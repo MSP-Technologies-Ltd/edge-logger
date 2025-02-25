@@ -159,7 +159,7 @@ async def consume_logging(channel: aio_pika.Channel):
                     device_id = data.get("deviceId")
 
                     if device_id is None:
-                        headers = json.loads(message.headers)
+                        headers = message.headers
 
                         timestamp = headers.get("timestamp")
                         device_id = headers.get("device_id")
