@@ -193,9 +193,10 @@ async def consume_logging(channel: aio_pika.Channel):
                                 latest_messages[f"{device_id} - standard"] = (
                                     standard_data
                                 )
-                                parsed_data[f"{device_id} - parsed"] = parsed_data
+                                latest_messages[f"{device_id} - parsed"] = parsed_data
                         else:
                             device_id = data.get("client_id")
+
                             latest_messages[device_id] = data
                     else:
                         latest_messages[device_id] = data
