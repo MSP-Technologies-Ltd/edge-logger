@@ -110,11 +110,11 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     body = message.body.decode()
                     data = json.loads(body)
 
-                    if match_command_structure(data) is True:
-                        device_id = data.get("deviceId")
-                        await save_to_redis(device_id, data)
-                    else:
-                        print("does not match expected message format")
+                    # if match_command_structure(data) is True:
+                    device_id = data.get("deviceId")
+                    await save_to_redis(device_id, data)
+                    # else:
+                    #     print("does not match expected message format")
 
                 except Exception as e:
                     print(f"Error processing Redis message: {e}")
@@ -152,21 +152,21 @@ async def consume_logging(channel: aio_pika.Channel):
 
                     data = json.loads(body)
 
-                    if match_status_structure(data):
-                        device_id = data.get("deviceId")
-                        timestamp = data.get("timestamp")
+                    # if match_status_structure(data):
+                    device_id = data.get("deviceId")
+                    timestamp = data.get("timestamp")
 
-                        device_info = {
-                            "deviceId": device_id,
-                            "timestamp": str(timestamp),
-                        }
+                    device_info = {
+                        "deviceId": device_id,
+                        "timestamp": str(timestamp),
+                    }
 
-                        status_data = data.get("status")
+                    status_data = data.get("status")
 
-                        if status_data is not None:
-                            all_data = {**device_info, **status_data}
+                    if status_data is not None:
+                        all_data = {**device_info, **status_data}
 
-                            latest_messages[device_id] = all_data
+                        latest_messages[device_id] = all_data
 
                 except Exception as e:
                     print(f"Error processing logging message: {e}")
