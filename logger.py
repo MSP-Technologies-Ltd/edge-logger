@@ -66,14 +66,11 @@ async def declare_and_bind_redis(channel: aio_pika.Channel):
 def match_command_structure(obj):
     if isinstance(obj, dict):
         expected_keys = {
-            "deviceId": str,
             "deviceType": str,
-            "from": str,
-            "to": str,
+            "deviceId": str,
             "commandSeq": str,
-            "commandHint": str,
-            "action": dict,
-            "timestamp": datetime,
+            "loggedAction": str,
+            "timestamp": str or datetime,
         }
         for key, expected_type in expected_keys.items():
             if key not in obj or not isinstance(obj[key], expected_type):
@@ -87,9 +84,13 @@ def match_status_structure(obj):
         expected_keys = {
             "deviceType": str,
             "deviceId": str,
+            "from": str,
+            "to": str,
             "commandSeq": str,
-            "status": dict,
-            "timestamp": datetime,
+            "commandHint": str,
+            "message": dict,
+            "action": str,
+            "timestamp": str or datetime,
         }
 
     for key, expected_type in expected_keys.items():
