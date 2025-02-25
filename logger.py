@@ -145,9 +145,9 @@ async def consume_logging(channel: aio_pika.Channel):
     queue = await declare_and_bind_logging(channel)
 
     async with queue.iterator() as queue_iter:
-        print("async with queue iter in consume_logging")
+        # print("async with queue iter in consume_logging")
         async for message in queue_iter:
-            print("async for message in queue iter")
+            # print("async for message in queue iter")
             async with message.process():
                 try:
                     body = message.body.decode()
