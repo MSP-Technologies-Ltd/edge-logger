@@ -195,7 +195,8 @@ async def consume_logging(channel: aio_pika.Channel):
                                 )
                                 parsed_data[f"{device_id} - parsed"] = parsed_data
                         else:
-                            print("I reckon this is an inverter")
+                            device_id = data.get("client_id")
+                            latest_messages[device_id] = data
                     else:
                         latest_messages[device_id] = data
 
