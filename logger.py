@@ -113,7 +113,9 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
 
                     # if match_command_structure(data) is True:
                     device_id = data.get("deviceId")
-                    await save_to_redis(device_id, data)
+                    if device_id is not None:
+                        await save_to_redis(device_id, data)
+
                     # else:
                     #     print("does not match expected message format")
 
