@@ -175,8 +175,8 @@ async def consume_logging(channel: aio_pika.Channel):
                             device_id = headers.get("Unique ID")
 
                         message_data = data.get("message")
-                        standard_data = data.get("standard")
-                        parsed_data = data.get("data")
+                        standard_data = message_data.get("standard")
+                        parsed_data = message_data.get("data")
 
                         device_info = {
                             "deviceId": device_id,
