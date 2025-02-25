@@ -29,7 +29,8 @@ latest_messages = {}
 async def init_redis():
     global redis_client
     redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True)
-    print("Connected to Redis.")
+    if redis_client is not None:
+        print("Connected to Redis.")
 
 
 async def save_to_redis(deviceId, data):
@@ -63,44 +64,6 @@ async def declare_and_bind_redis(channel: aio_pika.Channel):
     return queue
 
 
-"""Not working as expected and also not necessary at this point"""
-# def match_command_structure(obj):
-#     if isinstance(obj, dict):
-#         expected_keys = {
-#             "deviceType": str,
-#             "deviceId": str,
-#             "commandSeq": str,
-#             "loggedAction": str,
-#             "timestamp": str or datetime,
-#         }
-#         for key, expected_type in expected_keys.items():
-#             if key not in obj or not isinstance(obj[key], expected_type):
-#                 return False
-#             return True
-#         return False
-
-
-# def match_status_structure(obj):
-#     if isinstance(obj, dict):
-#         expected_keys = {
-#             "deviceType": str,
-#             "deviceId": str,
-#             "from": str,
-#             "to": str,
-#             "commandSeq": str,
-#             "commandHint": str,
-#             "message": dict,
-#             "action": str,
-#             "timestamp": str or datetime,
-#         }
-
-#     for key, expected_type in expected_keys.items():
-#         if key not in obj or not isinstance(obj[key], expected_type):
-#             return False
-#         return True
-#     return False
-
-
 async def consume_and_store_redis(channel: aio_pika.Channel):
     queue = await declare_and_bind_redis(channel)
 
@@ -111,13 +74,9 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     body = message.body.decode()
                     data = json.loads(body)
 
-                    # if match_command_structure(data) is True:
                     device_id = data.get("deviceId")
                     if device_id is not None:
                         await save_to_redis(device_id, data)
-
-                    # else:
-                    #     print("does not match expected message format")
 
                 except Exception as e:
                     print(
@@ -148,22 +107,17 @@ async def consume_logging(channel: aio_pika.Channel):
     queue = await declare_and_bind_logging(channel)
 
     async with queue.iterator() as queue_iter:
-        # print("async with queue iter in consume_logging")
         async for message in queue_iter:
-            # print("async for message in queue iter")
             async with message.process():
                 try:
                     body = message.body.decode()
 
                     data = json.loads(body)
 
-                    # if match_status_structure(data):
                     device_id = data.get("deviceId")
 
                     if device_id is None:
                         headers = message.headers
-
-                        # print(headers)
 
                         timestamp = headers.get("timestamp")
                         device_id = headers.get("device_id")
@@ -199,21 +153,8 @@ async def consume_logging(channel: aio_pika.Channel):
 
                             latest_messages[device_id] = data
                     else:
-                        latest_messages[device_id] = data
-
-                    # timestamp = data.get("timestamp")
-
-                    # device_info = {
-                    #     "deviceId": device_id,
-                    #     "timestamp": str(timestamp),
-                    # }
-
-                    # status_data = data.get("status")
-
-                    # if status_data is not None:
-                    # all_data = {**device_info, **data}
-
-                    # latest_messages[device_id] = all_data
+                        if "globalState" in data:
+                            latest_messages[device_id] = data
 
                 except Exception as e:
                     print(f"Error processing logging message: {e}, message: {data}")
