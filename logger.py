@@ -182,7 +182,7 @@ async def consume_logging(channel: aio_pika.Channel):
                         }
 
                         if message_data is not None:
-                            if "standard" in data:
+                            if "standard" in message_data:
 
                                 standard_data = message_data.get("standard")
                                 parsed_data = message_data.get("data")
@@ -194,6 +194,8 @@ async def consume_logging(channel: aio_pika.Channel):
                                     standard_data
                                 )
                                 parsed_data[f"{device_id} - parsed"] = parsed_data
+                            else:
+                                print("I reckon this is an inverter")
                     else:
                         latest_messages[device_id] = data
 
