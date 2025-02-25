@@ -63,41 +63,42 @@ async def declare_and_bind_redis(channel: aio_pika.Channel):
     return queue
 
 
-def match_command_structure(obj):
-    if isinstance(obj, dict):
-        expected_keys = {
-            "deviceType": str,
-            "deviceId": str,
-            "commandSeq": str,
-            "loggedAction": str,
-            "timestamp": str or datetime,
-        }
-        for key, expected_type in expected_keys.items():
-            if key not in obj or not isinstance(obj[key], expected_type):
-                return False
-            return True
-        return False
+"""Not working as expected and also not necessary at this point"""
+# def match_command_structure(obj):
+#     if isinstance(obj, dict):
+#         expected_keys = {
+#             "deviceType": str,
+#             "deviceId": str,
+#             "commandSeq": str,
+#             "loggedAction": str,
+#             "timestamp": str or datetime,
+#         }
+#         for key, expected_type in expected_keys.items():
+#             if key not in obj or not isinstance(obj[key], expected_type):
+#                 return False
+#             return True
+#         return False
 
 
-def match_status_structure(obj):
-    if isinstance(obj, dict):
-        expected_keys = {
-            "deviceType": str,
-            "deviceId": str,
-            "from": str,
-            "to": str,
-            "commandSeq": str,
-            "commandHint": str,
-            "message": dict,
-            "action": str,
-            "timestamp": str or datetime,
-        }
+# def match_status_structure(obj):
+#     if isinstance(obj, dict):
+#         expected_keys = {
+#             "deviceType": str,
+#             "deviceId": str,
+#             "from": str,
+#             "to": str,
+#             "commandSeq": str,
+#             "commandHint": str,
+#             "message": dict,
+#             "action": str,
+#             "timestamp": str or datetime,
+#         }
 
-    for key, expected_type in expected_keys.items():
-        if key not in obj or not isinstance(obj[key], expected_type):
-            return False
-        return True
-    return False
+#     for key, expected_type in expected_keys.items():
+#         if key not in obj or not isinstance(obj[key], expected_type):
+#             return False
+#         return True
+#     return False
 
 
 async def consume_and_store_redis(channel: aio_pika.Channel):
@@ -156,14 +157,30 @@ async def consume_logging(channel: aio_pika.Channel):
 
                     # if match_status_structure(data):
                     device_id = data.get("deviceId")
-                    timestamp = data.get("timestamp")
+
+                    if device_id is None:
+                        headers = json.loads(message.headers)
+
+                        timestamp = headers.get("timestamp")
+                        device_id = headers.get("device_id")
+                        data = data["message"]
+
+                        device_info = {
+                            "deviceId": device_id,
+                            "timestamp": str(timestamp),
+                        }
+
+                        all_data = {**device_info, **data}
+                        latest_messages[device_id] = all_data
+                    else:
+                        latest_messages[device_id] = data
+
+                    # timestamp = data.get("timestamp")
 
                     # device_info = {
                     #     "deviceId": device_id,
                     #     "timestamp": str(timestamp),
                     # }
-
-                    latest_messages[device_id] = data
 
                     # status_data = data.get("status")
 
