@@ -117,7 +117,9 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     #     print("does not match expected message format")
 
                 except Exception as e:
-                    print(f"Error processing Redis message: {e}")
+                    print(
+                        f"Error processing Redis message: {e}. Message received: {data}"
+                    )
 
 
 async def declare_and_bind_logging(channel: aio_pika.Channel):
