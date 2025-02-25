@@ -163,8 +163,17 @@ async def consume_logging(channel: aio_pika.Channel):
                     if device_id is None:
                         headers = message.headers
 
+                        # print(headers)
+
                         timestamp = headers.get("timestamp")
                         device_id = headers.get("device_id")
+
+                        if timestamp is None:
+                            timestamp = datetime.now().isoformat()
+
+                        if device_id is None:
+                            device_id = headers.get("Unique ID")
+
                         data = data.get("message")
 
                         device_info = {
@@ -192,7 +201,7 @@ async def consume_logging(channel: aio_pika.Channel):
                     # latest_messages[device_id] = all_data
 
                 except Exception as e:
-                    print(f"Error processing logging message: {e}")
+                    print(f"Error processing logging message: {e}, message: {data}")
 
 
 async def save_csv_file(keys, data, device_id):
