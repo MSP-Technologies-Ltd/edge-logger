@@ -163,7 +163,7 @@ async def consume_logging(channel: aio_pika.Channel):
 
                         timestamp = headers.get("timestamp")
                         device_id = headers.get("device_id")
-                        data = data["message"]
+                        data = data.get("message")
 
                         device_info = {
                             "deviceId": device_id,
