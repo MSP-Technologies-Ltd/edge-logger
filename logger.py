@@ -158,17 +158,19 @@ async def consume_logging(channel: aio_pika.Channel):
                     device_id = data.get("deviceId")
                     timestamp = data.get("timestamp")
 
-                    device_info = {
-                        "deviceId": device_id,
-                        "timestamp": str(timestamp),
-                    }
+                    # device_info = {
+                    #     "deviceId": device_id,
+                    #     "timestamp": str(timestamp),
+                    # }
 
-                    status_data = data.get("status")
+                    latest_messages[device_id] = data
 
-                    if status_data is not None:
-                        all_data = {**device_info, **status_data}
+                    # status_data = data.get("status")
 
-                        latest_messages[device_id] = all_data
+                    # if status_data is not None:
+                    # all_data = {**device_info, **data}
+
+                    # latest_messages[device_id] = all_data
 
                 except Exception as e:
                     print(f"Error processing logging message: {e}")
