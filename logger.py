@@ -181,8 +181,9 @@ async def consume_logging(channel: aio_pika.Channel):
                             "timestamp": str(timestamp),
                         }
 
-                        all_data = {**device_info, **data}
-                        latest_messages[device_id] = all_data
+                        if data is not None:
+                            all_data = {**device_info, **data}
+                            latest_messages[device_id] = all_data
                     else:
                         latest_messages[device_id] = data
 
