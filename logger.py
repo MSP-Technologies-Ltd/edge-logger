@@ -29,7 +29,8 @@ latest_messages = {}
 async def init_redis():
     global redis_client
     redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True)
-    print("Connected to Redis.")
+    if redis_client is not None:
+        print("Connected to Redis.")
 
 
 async def save_to_redis(deviceId, data):
@@ -63,43 +64,6 @@ async def declare_and_bind_redis(channel: aio_pika.Channel):
     return queue
 
 
-def match_command_structure(obj):
-    if isinstance(obj, dict):
-        expected_keys = {
-            "deviceType": str,
-            "deviceId": str,
-            "commandSeq": str,
-            "loggedAction": str,
-            "timestamp": str or datetime,
-        }
-        for key, expected_type in expected_keys.items():
-            if key not in obj or not isinstance(obj[key], expected_type):
-                return False
-            return True
-        return False
-
-
-def match_status_structure(obj):
-    if isinstance(obj, dict):
-        expected_keys = {
-            "deviceType": str,
-            "deviceId": str,
-            "from": str,
-            "to": str,
-            "commandSeq": str,
-            "commandHint": str,
-            "message": dict,
-            "action": str,
-            "timestamp": str or datetime,
-        }
-
-    for key, expected_type in expected_keys.items():
-        if key not in obj or not isinstance(obj[key], expected_type):
-            return False
-        return True
-    return False
-
-
 async def consume_and_store_redis(channel: aio_pika.Channel):
     queue = await declare_and_bind_redis(channel)
 
@@ -110,14 +74,20 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     body = message.body.decode()
                     data = json.loads(body)
 
-                    if match_command_structure(data) is True:
-                        device_id = data.get("deviceId")
+                    device_id = data.get("deviceId")
+
+                    if device_id is None:
+                        device_id = data.get("client_id")
+
+                    if device_id is not None:
                         await save_to_redis(device_id, data)
-                    else:
-                        print("does not match expected message format")
+                    # else:
+                    #     print(data)
 
                 except Exception as e:
-                    print(f"Error processing Redis message: {e}")
+                    print(
+                        f"Error processing Redis message: {e}. Message received: {data}"
+                    )
 
 
 async def declare_and_bind_logging(channel: aio_pika.Channel):
@@ -143,33 +113,57 @@ async def consume_logging(channel: aio_pika.Channel):
     queue = await declare_and_bind_logging(channel)
 
     async with queue.iterator() as queue_iter:
-        print("async with queue iter in consume_logging")
         async for message in queue_iter:
-            print("async for message in queue iter")
             async with message.process():
                 try:
                     body = message.body.decode()
 
                     data = json.loads(body)
 
-                    if match_status_structure(data):
-                        device_id = data.get("deviceId")
-                        timestamp = data.get("timestamp")
+                    device_id = data.get("deviceId")
+
+                    if device_id is None:
+                        headers = message.headers
+
+                        timestamp = headers.get("timestamp")
+                        device_id = headers.get("device_id")
+
+                        if timestamp is None:
+                            timestamp = datetime.now().isoformat()
+
+                        if device_id is None:
+                            device_id = headers.get("Unique ID")
+
+                        message_data = data.get("message")
 
                         device_info = {
                             "deviceId": device_id,
                             "timestamp": str(timestamp),
                         }
 
-                        status_data = data.get("status")
+                        if message_data is not None:
+                            if "standard" in message_data:
 
-                        if status_data is not None:
-                            all_data = {**device_info, **status_data}
+                                standard_data = message_data.get("standard")
+                                parsed_data = message_data.get("data")
 
-                            latest_messages[device_id] = all_data
+                                standard_data = {**device_info, **standard_data}
+                                parsed_data = {**device_info, **parsed_data}
+
+                                latest_messages[f"{device_id} - standard"] = (
+                                    standard_data
+                                )
+                                latest_messages[f"{device_id} - parsed"] = parsed_data
+                        else:
+                            device_id = data.get("client_id")
+
+                            latest_messages[device_id] = data
+                    else:
+                        if "globalState" in data:
+                            latest_messages[device_id] = data
 
                 except Exception as e:
-                    print(f"Error processing logging message: {e}")
+                    print(f"Error processing logging message: {e}, message: {data}")
 
 
 async def save_csv_file(keys, data, device_id):
@@ -201,7 +195,7 @@ async def save_messages():
                 keys = list(data.keys())
 
                 await save_csv_file(keys, data, device_id)
-                print(f"Saving log for {device_id}")
+                # print(f"Saving log for {device_id}")
 
         await asyncio.sleep(2)
 
