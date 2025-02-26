@@ -150,7 +150,7 @@ async def consume_logging(channel: aio_pika.Channel):
 
                                 unparsed_data = {**device_info, **unparsed_data}
                                 standard_data = {**device_info, **standard_data}
-                                parsed_data = {**device_info, **parsed data}
+                                parsed_data = {**device_info, **parsed_data}
 
                                 if unparsed_data is not None:
                                     latest_messages[f"{device_id} - unparsed data"] = (
