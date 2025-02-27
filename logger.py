@@ -81,8 +81,10 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
 
                     if device_id is not None:
                         await save_to_redis(device_id, data)
-                    # else:
-                    #     print(data)
+
+                        keys = data.keys()
+
+                        await save_csv_file(keys, data, device_id, commands=True)
 
                 except Exception as e:
                     print(
@@ -156,10 +158,14 @@ async def consume_logging(channel: aio_pika.Channel):
                                     latest_messages[f"{device_id} - unparsed data"] = (
                                         unparsed_data
                                     )
-                                if parsed_data is not None:   
-                                    latest_messages[f"{device_id} - parsed data"] = parsed_data
+                                if parsed_data is not None:
+                                    latest_messages[f"{device_id} - parsed data"] = (
+                                        parsed_data
+                                    )
                                 if standard_data is not None:
-                                    latest_messages[f"{device_id} - standard data"] = standard_data
+                                    latest_messages[f"{device_id} - standard data"] = (
+                                        standard_data
+                                    )
                         else:
                             device_id = data.get("client_id")
 
@@ -172,18 +178,30 @@ async def consume_logging(channel: aio_pika.Channel):
                     print(f"Error processing logging message: {e}, message: {data}")
 
 
-async def save_csv_file(keys, data, device_id):
+async def save_csv_file(keys, data, device_id, commands):
     now = datetime.now()
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
     log_dir = "/app/Logs"
+    # log_dir = "./logs"
     # documents_path = Path.home() / "Documents" / "Logs" / f"{device_id}"
-    documents_path = Path(log_dir) / f"{device_id}"
+    if not commands:
+        documents_path = Path(log_dir) / f"{device_id}"
+    else:
+        documents_path = Path(log_dir) / "commands" / f"{device_id}"
+
     documents_path.mkdir(parents=True, exist_ok=True)
 
-    target_file = (
-        documents_path / f"log_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv"
-    )
+    if not commands:
+        target_file = (
+            documents_path
+            / f"log_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv"
+        )
+    else:
+        target_file = (
+            documents_path
+            / f"commands_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv"
+        )
 
     mode = "a" if target_file.exists() else "w"
     with target_file.open(mode=mode, newline="") as doc:
@@ -200,7 +218,7 @@ async def save_messages():
 
                 keys = list(data.keys())
 
-                await save_csv_file(keys, data, device_id)
+                await save_csv_file(keys, data, device_id, commands=False)
                 # print(f"Saving log for {device_id}")
 
         await asyncio.sleep(2)
