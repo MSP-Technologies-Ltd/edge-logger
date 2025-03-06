@@ -26,6 +26,7 @@ redis_queue = asyncio.Queue()
 latest_messages = {}
 
 
+# initiate redis connection
 async def init_redis():
     global redis_client
     redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True)
@@ -33,6 +34,7 @@ async def init_redis():
         print("Connected to Redis.")
 
 
+# method to save data to redis by device id
 async def save_to_redis(deviceId, data):
     if not redis_client:
         print("Not connected to Redis Instance")
@@ -45,6 +47,7 @@ async def save_to_redis(deviceId, data):
     await redis_client.ltrim(key, -MAX_ITEMS_PER_DEVICE, -1)
 
 
+# method to declare and bind to the redis command logging queue
 async def declare_and_bind_redis(channel: aio_pika.Channel):
     queue_name = "command_logging"
     queue = await channel.declare_queue(
@@ -64,6 +67,8 @@ async def declare_and_bind_redis(channel: aio_pika.Channel):
     return queue
 
 
+# method that consumes the data from the redis queue and stores the last 5 messages in redis
+# added later - also saves these command logs to a csv file
 async def consume_and_store_redis(channel: aio_pika.Channel):
     queue = await declare_and_bind_redis(channel)
 
@@ -92,6 +97,7 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     )
 
 
+# declare and bind the status logging queue
 async def declare_and_bind_logging(channel: aio_pika.Channel):
     queue_name = "logging"
     queue = await channel.declare_queue(
@@ -111,38 +117,49 @@ async def declare_and_bind_logging(channel: aio_pika.Channel):
     return queue
 
 
+# consumes all messages on the logging queue and processes them accordingly.
 async def consume_logging(channel: aio_pika.Channel):
+    # declare queue
     queue = await declare_and_bind_logging(channel)
 
+    # iterate through the queue
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
+            # process each message (ack)
             async with message.process():
                 try:
+                    # decode message body
                     body = message.body.decode()
 
                     data = json.loads(body)
 
+                    # get device id from body
                     device_id = data.get("deviceId")
 
+                    # if device id not found, check headers
                     if device_id is None:
                         headers = message.headers
 
                         timestamp = headers.get("timestamp")
                         device_id = headers.get("device_id")
 
+                        # if timestamp doesn't exist in data, add at time of processing
                         if timestamp is None:
                             timestamp = datetime.now().isoformat()
 
+                        # primarily for dealing with batteries
                         if device_id is None:
                             device_id = headers.get("Unique ID")
 
                         message_data = data.get("message")
 
+                        # create device info object to add to existing data
                         device_info = {
                             "deviceId": device_id,
                             "timestamp": str(timestamp),
                         }
 
+                        # battery data
                         if message_data is not None:
                             if "standard" in message_data:
 
@@ -166,10 +183,12 @@ async def consume_logging(channel: aio_pika.Channel):
                                     latest_messages[f"{device_id} - standard data"] = (
                                         standard_data
                                     )
+                        # inverter data
                         else:
                             device_id = data.get("client_id")
 
                             latest_messages[device_id] = data
+                    # controller data
                     else:
                         if "globalState" in data:
                             latest_messages[device_id] = data
@@ -178,30 +197,52 @@ async def consume_logging(channel: aio_pika.Channel):
                     print(f"Error processing logging message: {e}, message: {data}")
 
 
+# method to save given data to a csv file
 async def save_csv_file(keys, data, device_id, commands):
     now = datetime.now()
+
+    # round to nearest hour for file name
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
-    log_dir = "/app/Logs"
+    # for local testing (not in docker)
     # log_dir = "./logs"
-    # documents_path = Path.home() / "Documents" / "Logs" / f"{device_id}"
-    if not commands:
-        documents_path = Path(log_dir) / f"{device_id}"
-    else:
-        documents_path = Path(log_dir) / "commands" / f"{device_id}"
+
+    # logs set up for docker container.
+    log_dir = "/app/Logs"
+
+    documents_path = (
+        Path(log_dir) / f"{device_id}"
+        if not commands
+        else Path(log_dir) / "commands" / f"{device_id}"
+    )
+
+    # if not commands:
+    #     documents_path = Path(log_dir) / f"{device_id}"
+    # else:
+    #     documents_path = Path(log_dir) / "commands" / f"{device_id}"
 
     documents_path.mkdir(parents=True, exist_ok=True)
-
-    if not commands:
-        target_file = (
-            documents_path
-            / f"log_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv"
-        )
-    else:
-        target_file = (
+    
+    # target file name dependent on whether it is a command log or not
+    target_file = (
+        (documents_path / f"log_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv")
+        if not commands
+        else (
             documents_path
             / f"commands_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv"
         )
+    )
+
+    # if not commands:
+    #     target_file = (
+    #         documents_path
+    #         / f"log_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv"
+    #     )
+    # else:
+    #     target_file = (
+    #         documents_path
+    #         / f"commands_{device_id}_{current_hour.strftime('%Y-%m-%d_%H')}.csv"
+    #     )
 
     mode = "a" if target_file.exists() else "w"
     with target_file.open(mode=mode, newline="") as doc:
@@ -210,7 +251,8 @@ async def save_csv_file(keys, data, device_id, commands):
             writer.writeheader()
         writer.writerow(data)
 
-
+# iterates through latest messages, provides keys and data to save_csv_file
+# occurs every 2 seconds (status logging only)
 async def save_messages():
     while True:
         if latest_messages:
@@ -223,7 +265,7 @@ async def save_messages():
 
         await asyncio.sleep(2)
 
-
+# method to connect to RabbitMQ with retries
 async def connect_with_retry(max_retries=5, base_delay=2):
     retries = 0
     while True:
@@ -241,7 +283,7 @@ async def connect_with_retry(max_retries=5, base_delay=2):
             print(f"Connection failed ({e}). Retrying in {wait_time:.2f} seconds")
             await asyncio.sleep(wait_time)
 
-
+# main method to run the app
 async def app():
     await init_redis()
     while True:
