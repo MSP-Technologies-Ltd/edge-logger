@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import json
 import aioredis
-from extras import process_device_data, get_device_id
+from extras import process_device_data, get_device_id, get_device_type
 
 load_dotenv()
 
@@ -30,23 +30,56 @@ latest_messages = {}
 # initiate redis connection
 async def init_redis():
     global redis_client
-    redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True)
-    if redis_client is not None:
-        print("Connected to Redis.")
-
+    try:
+        print(f">>> Connecting to Redis at {REDIS_URL}...")
+        if not REDIS_URL:
+            print(">>> ERROR: REDIS_URL environment variable is not set!")
+            return
+            
+        redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True)
+        
+        # Test Redis connection with explicit error handling
+        try:
+            ping_result = await redis_client.ping()
+            print(f">>> Redis ping result: {ping_result}")
+            print(">>> Connected to Redis and connection verified.")
+        except Exception as e:
+            print(f">>> ERROR during Redis ping test: {e}")
+            redis_client = None
+    except Exception as e:
+        print(f">>> ERROR connecting to Redis: {e}")
+        import traceback
+        traceback.print_exc()
+        redis_client = None
 
 # method to save data to redis by device id
 async def save_to_redis(deviceId, data):
+    print(f">>> ENTERING save_to_redis for device: {deviceId}")
     if not redis_client:
         print("Not connected to Redis Instance")
         return
 
-    device_type = deviceId.lower()
-    key = f"logs:{device_type}"
-
-    await redis_client.rpush(key, json.dumps(data))
-    await redis_client.ltrim(key, -MAX_ITEMS_PER_DEVICE, -1)
-
+    try:
+        device_type = deviceId.lower()
+        key = f"logs:{device_type}"
+        print(f">>> Attempting to save to Redis key: {key}")
+        
+        json_data = json.dumps(data)
+        print(f">>> Data serialized to JSON, length: {len(json_data)}")
+        
+        await redis_client.rpush(key, json_data)
+        print(f">>> Successfully pushed data to Redis")
+        
+        await redis_client.ltrim(key, -MAX_ITEMS_PER_DEVICE, -1)
+        print(f">>> Successfully trimmed Redis list for key: {key}")
+        
+        # Debug: Verify data was saved
+        length = await redis_client.llen(key)
+        print(f">>> Redis key {key} now has {length} items")
+    except Exception as e:
+        print(f">>> ERROR in save_to_redis: {e}")
+        import traceback
+        traceback.print_exc()
 
 # method to declare and bind to the redis command logging queue
 async def declare_and_bind_redis(channel: aio_pika.Channel):
@@ -81,23 +114,23 @@ async def consume_and_store_redis(channel: aio_pika.Channel):
                     body = message.body.decode()
                     data = json.loads(body)
 
-                    combined_message = {**headers, **data} if headers else data
+                    combined_message = {**headers, **data}
 
                     device_id = get_device_id(combined_message)
 
-                    if device_id is not None:
-                        if "heartbeat_echo" in combined_message:
-                            await save_to_redis(f"{device_id}-heartbeat", data)
-                        elif "heartbeat_echo" not in combined_message:
-                            keys = combined_message.keys()
+                    if device_id:
+                        print(f"Redis command - Device ID: {device_id}")
+                        # Save the actual command data to Redis
+                        await save_to_redis(device_id, combined_message)
 
-                            await save_csv_file(
-                                keys, combined_message, device_id, commands=True
-                            )
-
+                        # If you want to also save commands to CSV
+                        keys = list(combined_message.keys())
+                        await save_csv_file(
+                            keys, combined_message, device_id, commands=True
+                        )
                 except Exception as e:
                     print(
-                        f"Error processing Redis message: {e}. Message received: {data}"
+                        f"Error processing Redis message: {e}. Message: {body if 'body' in locals() else 'unknown'}"
                     )
 
 
@@ -131,46 +164,62 @@ async def consume_logging(channel: aio_pika.Channel):
         async for message in queue_iter:
             # process each message (ack)
             async with message.process():
-                try:
-                    # decode message body
-                    headers = message.headers
-                    body = message.body.decode()
 
-                    data = json.loads(body)
+                # decode message body
+                headers = message.headers
+                body = message.body.decode()
 
-                    combined_message = {**headers, **data}
+                data = json.loads(body)
 
-                    device_id = get_device_id(combined_message)
+                combined_message = {**headers, **data}
 
-                    if device_id is not None:
-                        processed_data = await process_device_data(
-                            device_id, combined_message
-                        )
+                device_id = get_device_id(combined_message)
+                device_type = get_device_type(combined_message)
 
-                        if processed_data is not None:
-                            if type(processed_data) is list:
-                                for data in processed_data:
-                                    data_type = data.get("type")
+                print(device_type)
 
-                                    if data_type is not None:
-                                        if data_type == "standard_data":
-                                            latest_messages[
-                                                f"{device_id} - unparsed data"
-                                            ] = data
+                if device_id is not None:
+                    processed_data = await process_device_data(
+                        device_type, combined_message
+                    )
 
-                                        elif data_type == "unparsed_data":
-                                            latest_messages[
-                                                f"{device_id} - unparsed data"
-                                            ] = data
-                                        elif data_type == "parsed_data":
-                                            latest_messages[
-                                                f"{device_id} - parsed data"
-                                            ] = data
-                            else:
-                                latest_messages[device_id] = processed_data
+                    if processed_data is not None:
+                        if type(processed_data) is list:
+                            for data in processed_data:
+                                data_type = data.get("dataType")
 
-                except Exception as e:
-                    print(f"Error processing logging message: {e}, message: {data}")
+                                if data_type is not None:
+                                    if data_type == "standard_data":
+                                        data.pop("dataType", None)
+                                        latest_messages[
+                                            f"{device_id} - unparsed data"
+                                        ] = data
+
+                                    elif data_type == "unparsed_data":
+                                        data.pop("dataType", None)
+                                        latest_messages[
+                                            f"{device_id} - unparsed data"
+                                        ] = data
+                                    elif data_type == "parsed_data":
+                                        data.pop("dataType", None)
+                                        latest_messages[
+                                            f"{device_id} - parsed data"
+                                        ] = data
+                                    elif data_type == "global":
+                                        data.pop("dataType", None)
+                                        latest_messages[
+                                            f"{device_id} - globalState"
+                                        ] = data
+                                    elif data_type == "lastKnown":
+                                        data.pop("dataType", None)
+                                        latest_messages[
+                                            f"{device_id} - lastKnownGood"
+                                        ] = data
+                        else:
+                            latest_messages[device_id] = processed_data
+
+            # except Exception as e:
+            #     print(f"Error processing logging message: {e}, message: {data}")
 
 
 # method to save given data to a csv file
