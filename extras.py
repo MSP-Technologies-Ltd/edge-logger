@@ -80,7 +80,7 @@ async def process_inverter(data):
     if data is not None:
         try:
             if data is not None:
-                
+                pass
             pass
         except Exception as e:
             print(f"Error processing inverter data: {e}")

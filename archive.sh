@@ -5,7 +5,7 @@ LOG_DIR="$HOME/Documents/Logs"
 ARCHIVE_DIR="$HOME/Documents/Archives/Logs"
 
 # last mon and sun dates 
-LAST_MON="$(date -d'monday-14 days' +%Y%m%d)"
+LAST_MON="$(date -dlast-monday +%Y%m%d)"
 LAST_SUN="$(date -dlast-sunday +%Y%m%d)"
 
 # archive name
