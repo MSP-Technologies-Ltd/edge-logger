@@ -6,6 +6,7 @@
   "exchange_name": "device",
   "logging_keys": ["#.status.#", "#.status-#", "#-status-#", "#_status_#"],
   "command_keys": [
+    "#.commands",
     "#.commands.#",
     "#_commands_#",
     "#-commands-#",
