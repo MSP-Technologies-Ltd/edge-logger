@@ -11,7 +11,7 @@ with open("./config.json", "r") as file:
 
 RABBIT_URL = config.get("rabbit", None)
 REDIS_URL = config.get("redis", None)
-LOG_DIR = config.get("log_dir_dev", None)
+LOG_DIR = config.get("log_dir_prod", None)
 EXCHANGE_NAME = config.get("exchange_name", None)
 LOGGING_ROUTING_KEYS = config.get("logging_keys", None)
 COMMAND_ROUTING_KEYS = config.get("command_keys", None)
@@ -159,6 +159,11 @@ async def consume_logging_queue(channel: aio_pika.Channel):
 
                             if "client_id" in full_message:
                                 latest_messages[f"{device_id}"] = {"timestamp": timestamp, **full_message}
+
+                            else:
+                                latest_messages[f"{device_id}"] = {"timestamp": timestamp, **full_message}
+                            
+
     except json.JSONDecodeError as e:
         print(f"aaaaa, {e}")
     except Exception as e:
