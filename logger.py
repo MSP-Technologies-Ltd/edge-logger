@@ -159,6 +159,9 @@ async def consume_logging_queue(channel: aio_pika.Channel):
 
                             if "client_id" in full_message:
                                 latest_messages[f"{device_id}"] = {"timestamp": timestamp, **full_message}
+                                
+                            if "loggedAction" in full_message:
+                                latest_messages[f"{device_id}"] = {"timestamp": timestamp, **full_message}
 
                             else:
                                 latest_messages[f"{device_id}"] = {"timestamp": timestamp, **full_message}
