@@ -11,7 +11,7 @@ with open("./config.json", "r") as file:
 
 RABBIT_URL = config.get("rabbit", None)
 REDIS_URL = config.get("redis", None)
-LOG_DIR = config.get("log_dir_prod", None)
+LOG_DIR = config.get("log_dir_dev", None)
 EXCHANGE_NAME = config.get("exchange_name", None)
 LOGGING_ROUTING_KEYS = config.get("logging_keys", None)
 COMMAND_ROUTING_KEYS = config.get("command_keys", None)
@@ -104,7 +104,9 @@ async def save_csv_file(keys, data_rows, devId, commandMessage):
     mode = "a" if target_file.exists() else "w"
 
     with target_file.open(mode=mode, newline="") as doc:
-        writer = csv.DictWriter(doc, fieldnames=keys)
+        writer = csv.DictWriter(doc, fieldnames=keys, extrasaction='ignore')
+        print(len(data_rows), "rows")
+        print("target file", target_file)
         if mode == "w":
             writer.writeheader()
         for row in data_rows:
@@ -116,10 +118,17 @@ async def save_status_messages():
         if latest_messages:
             for devId, data_rows in latest_messages.items():
                 if data_rows != []:
-                
-                    keys = list(data.keys())
 
-                    await save_csv_file(keys, data_rows, devId, commandMessage=False)
+                    # print when messages are saved
+                    # print on csv save
+                    # print when trying to save ^
+                
+                    keys = list(data_rows[0].keys())
+
+                    try:
+                        await save_csv_file(keys, data_rows, devId, commandMessage=False)
+                    except Exception as e:
+                        print(f"Error saving CSV file: {e}")
                     latest_messages[devId] = []
 
         await asyncio.sleep(2)
@@ -186,6 +195,13 @@ async def consume_logging_queue(channel: aio_pika.Channel):
                             #         if k not in latest_messages.keys():
                             #             latest_messages[k] = []
                             #         latest_messages[k].append({"timestamp": timestamp, **full_message})
+                            
+                            if "globalState" in full_message:
+                                fallback = False
+                                k = f"{device_id}"
+                                if k not in latest_messages.keys():
+                                    latest_messages[k] = []
+                                latest_messages[k].append({"timestamp": timestamp, **full_message})
                             
                             if "client_id" in full_message:
                                 fallback = False
