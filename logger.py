@@ -11,7 +11,7 @@ with open("./config.json", "r") as file:
 
 RABBIT_URL = config.get("rabbit", None)
 REDIS_URL = config.get("redis", None)
-LOG_DIR = config.get("log_dir_prod", None)
+LOG_DIR = config.get("log_dir_dev", None)
 EXCHANGE_NAME = config.get("exchange_name", None)
 LOGGING_ROUTING_KEYS = config.get("logging_keys", None)
 COMMAND_ROUTING_KEYS = config.get("command_keys", None)
@@ -80,7 +80,7 @@ async def init_rabbit():
             asyncio.sleep(wait_time)
 
 
-async def save_csv_file(keys, data, devId, commandMessage):
+async def save_csv_file(keys, data_rows, devId, commandMessage):
     now = datetime.now()
 
     current_hour = now.replace(minute=0, second=0, microsecond=0)
@@ -104,21 +104,32 @@ async def save_csv_file(keys, data, devId, commandMessage):
     mode = "a" if target_file.exists() else "w"
 
     with target_file.open(mode=mode, newline="") as doc:
-        writer = csv.DictWriter(doc, fieldnames=keys)
+        writer = csv.DictWriter(doc, fieldnames=keys, extrasaction='ignore')
+        print(len(data_rows), "rows")
+        print("target file", target_file)
         if mode == "w":
             writer.writeheader()
-        writer.writerow(data)
+        for row in data_rows:
+            writer.writerow(row)
 
 
 async def save_status_messages():
     while True:
         if latest_messages:
-            for devId, data in latest_messages.items():
-                if data:
-                
-                    keys = list(data.keys())
+            for devId, data_rows in latest_messages.items():
+                if data_rows != []:
 
-                    await save_csv_file(keys, data, devId, commandMessage=False)
+                    # print when messages are saved
+                    # print on csv save
+                    # print when trying to save ^
+                
+                    keys = list(data_rows[0].keys())
+
+                    try:
+                        await save_csv_file(keys, data_rows, devId, commandMessage=False)
+                    except Exception as e:
+                        print(f"Error saving CSV file: {e}")
+                    latest_messages[devId] = []
 
         await asyncio.sleep(2)
 
@@ -140,28 +151,78 @@ async def consume_logging_queue(channel: aio_pika.Channel):
 
                     if full_message is not None:
                         if device_id is not None:
+                            fallback = True
                             timestamp = data.get("timestamp", datetime.now().isoformat())
 
                             if "message" in full_message:
+                                fallback = False
                                 batt_data = full_message.get("message", None)
+                                # batt_logging = {"standard": f"{device_id} - standard data", 
+                                #         "data": f"{device_id} - unparsed data", 
+                                #         "parsed data": f"{device_id} - parsed data"}
+                                # for (k, v) in batt_logging.items():
+                                #     logged = batt_data.get(k, None)
+                                #     if logged is not None:
+                                #         if v not in latest_messages.keys():
+                                #             latest_messages[v] = []
+                                #         latest_messages[v].append({"timestamp": timestamp, **logged})
                                 standard_data = batt_data.get("standard", None)
                                 unparsed_data = batt_data.get("data", None)
                                 parsed_data = batt_data.get("parsed data", None)
 
                                 if standard_data is not None:
-                                    latest_messages[f"{device_id} - standard data"] = {"timestamp": timestamp, **standard_data}
+                                    k = f"{device_id} - standard data"
+                                    if k not in latest_messages.keys():
+                                        latest_messages[k] = []
+                                    latest_messages[k].append({"timestamp": timestamp, **standard_data})
 
                                 if unparsed_data is not None:
-                                    latest_messages[f"{device_id} - unparsed data"] = {"timestamp": timestamp, **unparsed_data}
+                                    k = f"{device_id} - unparsed data"
+                                    if k not in latest_messages.keys():
+                                        latest_messages[k] = []
+                                    latest_messages[k].append({"timestamp": timestamp, **unparsed_data})
 
                                 if parsed_data is not None:
-                                    latest_messages[f"{device_id} - parsed data"] = {"timestamp": timestamp, **parsed_data}
+                                    k = f"{device_id} - parsed data"
+                                    if k not in latest_messages.keys():
+                                        latest_messages[k] = []
+                                    latest_messages[k].append({"timestamp": timestamp, **parsed_data})
 
+                            # for key in ["client_id", "loggedAction]:
+                            #     if key in full_message:
+                            #         fallback = False
+                            #         k = f"{device_id}"
+                            #         if k not in latest_messages.keys():
+                            #             latest_messages[k] = []
+                            #         latest_messages[k].append({"timestamp": timestamp, **full_message})
+                            
+                            if "globalState" in full_message:
+                                fallback = False
+                                k = f"{device_id}"
+                                if k not in latest_messages.keys():
+                                    latest_messages[k] = []
+                                latest_messages[k].append({"timestamp": timestamp, **full_message})
+                            
                             if "client_id" in full_message:
-                                latest_messages[f"{device_id}"] = {"timestamp": timestamp, **full_message}
+                                fallback = False
+                                k = f"{device_id}"
+                                if k not in latest_messages.keys():
+                                    latest_messages[k] = []
+                                latest_messages[k].append({"timestamp": timestamp, **full_message})
+                                
+                            if "loggedAction" in full_message:
+                                fallback = False
+                                k = f"{device_id}"
+                                if k not in latest_messages.keys():
+                                    latest_messages[k] = []
+                                latest_messages[k].append({"timestamp": timestamp, **full_message})
 
-                            else:
-                                latest_messages[f"{device_id}"] = {"timestamp": timestamp, **full_message}
+                            #else:
+                            if fallback:
+                                k = f"{device_id}"
+                                if k not in latest_messages.keys():
+                                    latest_messages[k] = []
+                                latest_messages[k].append({"timestamp": timestamp, **full_message})
                             
 
     except json.JSONDecodeError as e:
@@ -255,7 +316,7 @@ async def consume_store_redis(channel: aio_pika.Channel):
 
                                 keys = list(full_msg.keys())
                                 await save_csv_file(
-                                    keys, full_msg, device_id, commandMessage=True
+                                    keys, [full_msg], device_id, commandMessage=True
                                 )
                 except Exception as e:
                     print(f"Error in consume_store_redis: {e}")

@@ -1,5 +1,5 @@
 {
-  "rabbit": "amqp://localhost:5672",
+  "rabbit": "amqp://100.117.69.17:5672",
   "redis": "redis://localhost:6379",
   "log_dir_dev": "./logs",
   "log_dir_prod": "/app/Logs",
