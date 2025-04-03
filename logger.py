@@ -123,7 +123,12 @@ async def save_status_messages():
                     # print on csv save
                     # print when trying to save ^
                 
-                    keys = list(data_rows[0].keys())
+                    # keys = list(data_rows[0].keys())
+                    keys = []
+                    for d in data_rows:
+                        for k in d.keys()
+                            if k not in keys:
+                                keys.append(k)
 
                     try:
                         await save_csv_file(keys, data_rows, devId, commandMessage=False)
