@@ -105,8 +105,8 @@ async def save_csv_file(keys, data_rows, devId, commandMessage):
 
     with target_file.open(mode=mode, newline="") as doc:
         writer = csv.DictWriter(doc, fieldnames=keys, extrasaction='ignore')
-        print(len(data_rows), "rows")
-        print("target file", target_file)
+        # print(len(data_rows), "rows")
+        # print("target file", target_file)
         if mode == "w":
             writer.writeheader()
         for row in data_rows:
