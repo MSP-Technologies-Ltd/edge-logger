@@ -216,6 +216,13 @@ async def consume_logging_queue(channel: aio_pika.Channel):
                                 if k not in latest_messages.keys():
                                     latest_messages[k] = []
                                 latest_messages[k].append({"timestamp": timestamp, **full_message})
+                                
+                            elif "message" in full_message:
+                                fallback = False
+                                k = f"{device_id}"
+                                if k not in latest_messages.keys():
+                                    latest_messages[k] = []
+                                latest_messages[k].append({"timestamp": timestamp, **full_message})
 
                             #else:
                             if fallback:
