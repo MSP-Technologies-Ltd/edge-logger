@@ -39,7 +39,6 @@ else
             MONTH_NAME=$(date -d "$YEAR-$MONTH-01" +%B)
             ARCHIVE_FILE="$TARGET_DIR/${PARENT_NAME}-${MONTH_NAME}-${YEAR}.tar.gz"
 
-            # Create archive with relative path preserved
             tar -czf "$ARCHIVE_FILE.tmp" -C "$LOG_DIR" "$REL_PATH"
 
             if [ -f "$ARCHIVE_FILE" ]; then
@@ -53,7 +52,6 @@ else
                 mv "$ARCHIVE_FILE.tmp" "$ARCHIVE_FILE"
             fi
 
-            # ✅ Delete original file now that it's archived
             echo "Archived and removing: $file"
             rm "$file"
         fi
